@@ -41,17 +41,16 @@ button {
 	<button onclick="checkData()">再チェック</button>
 	<button onclick="saveData()">保存</button>
 
-	<div id="errorList"></div>
+
 
 	<!-- モーダル -->
 	<div id="modal"
 		style="display: none; position: fixed; top: 20%; left: 30%; width: 320px; background: white; border: 1px solid black; padding: 20px;">
 		<h3>項目訂正</h3>
 
-		図品番:<br> <input type="text" id="editItem"><br>
-		<br> 数量:<br> <input type="number" id="editQty"><br>
-		<br> 単価:<br> <input type="number" id="editPrice"><br>
-		<br>
+		図品番:<br> <input type="text" id="editItem"><br> <br>
+		数量:<br> <input type="number" id="editQty"><br> <br>
+		単価:<br> <input type="number" id="editPrice"><br> <br>
 
 		<button onclick="applyEdit()">更新</button>
 		<button onclick="closeModal()">閉じる</button>
@@ -164,22 +163,24 @@ document.getElementById("modal").style.display="block";
 }
 
 // ===== 更新 =====
-function applyEdit(){
+function applyEdit() {
 
-const item=document.getElementById("editItem").value;
-const qty=parseInt(document.getElementById("editQty").value);
-const price=parseInt(document.getElementById("editPrice").value);
+    const item = document.getElementById("editItem").value;
+    const qty = parseInt(document.getElementById("editQty").value);
+    const price = parseInt(document.getElementById("editPrice").value);
 
-spreadsheet[0].setValueFromCoords(COL.ITEM,selectedRowIndex,item);
-spreadsheet[0].setValueFromCoords(COL.QTY,selectedRowIndex,qty);
-spreadsheet[0].setValueFromCoords(COL.PRICE,selectedRowIndex,price);
+    // シートへ反映
+    spreadsheet[0].setValueFromCoords(COL.ITEM, selectedRowIndex, item);
+    spreadsheet[0].setValueFromCoords(COL.QTY, selectedRowIndex, qty);
+    spreadsheet[0].setValueFromCoords(COL.PRICE, selectedRowIndex, price);
 
-spreadsheet[0].setValueFromCoords(COL.CHECK,selectedRowIndex,false);
+    // 訂正チェックを解除
+    spreadsheet[0].setValueFromCoords(COL.CHECK, selectedRowIndex, false);
 
-closeModal();
+    closeModal();
 
-checkData();
-
+    // 再チェック
+    checkData();
 }
 
 function closeModal(){
@@ -189,102 +190,107 @@ document.getElementById("modal").style.display="none";
 let errorMessages=[];
 
 // ===== エラーチェック =====
-function checkData(){
+// ===== エラーチェック =====
+function checkData() {
 
-const data=spreadsheet[0].getData();
-errorMessages=[];
+    const data = spreadsheet[0].getData();
+    errorMessages = [];
 
-for(let i=0;i<data.length;i++){
+    // 背景色をリセット
+    for (let i = 0; i < data.length; i++) {
+        spreadsheet[0].setStyle(i, { backgroundColor: '' });
+    }
 
-spreadsheet[0].setStyle(i,{backgroundColor:''});
+    for (let i = 0; i < data.length; i++) {
 
+        const row = data[i];
+
+        // 空行はスキップ
+        if (row.every(cell => !cell)) continue;
+
+        const signedDt = row[COL.DATE];
+        const orderNo = row[COL.ORDER];
+        const machine_nm = row[COL.MACHINE];
+        const material_cd = row[COL.MATERIAL];
+        const item = row[COL.ITEM];
+        const qty = row[COL.QTY];
+        const price = row[COL.PRICE];
+
+        let hasError = false;
+        let rowErrors = [];
+
+        // 修理案件判定
+        // 修理案件判定
+if (orderNo && orderNo.startsWith("G")) {
+
+    const currentStatus =
+        spreadsheet[0].getValueFromCoords(COL.STATUS, i);
+
+    // 訂正済みの場合は上書きしない
+    if (currentStatus !== "訂正済み") {
+        if (!itemMaster.includes(item)) {
+            spreadsheet[0].setValueFromCoords(
+                COL.STATUS, i, "修理案件／項目訂正"
+            );
+        } else {
+            spreadsheet[0].setValueFromCoords(
+                COL.STATUS, i, "修理案件"
+            );
+        }
+    }
 }
 
-for(let i=0;i<data.length;i++){
+        // 登録日チェック
+        if (!signedDt) {
+            rowErrors.push("登録日未入力");
+            hasError = true;
+        }
 
-const row=data[i];
+        // 適用機器名チェック
+        if (!machine_nm) {
+            rowErrors.push("適用機器名未入力");
+            hasError = true;
+        }
 
-if(row.every(cell=>!cell)) continue;
+        // 図品番チェック
+        if (!itemMaster.includes(item)) {
+            rowErrors.push("図品番エラー");
+            hasError = true;
+        }
 
-const signedDt=row[COL.DATE];
-const orderNo=row[COL.ORDER];
-const machine_nm=row[COL.MACHINE];
-const material_cd=row[COL.MATERIAL];
-const item=row[COL.ITEM];
-const qty=row[COL.QTY];
-const price=row[COL.PRICE];
+        // 数量チェック
+        if (!qty || qty <= 0) {
+            rowErrors.push("数量エラー");
+            hasError = true;
+        }
 
-let hasError=false;
+        // 単価チェック
+        if (!price || price <= 0) {
+            rowErrors.push("単価エラー");
+            hasError = true;
+        }
 
-if(orderNo && orderNo.startsWith("G")){
+        // 品目コードチェック
+        if (!material_cd) {
+            rowErrors.push("品目コードエラー");
+            hasError = true;
+        }
 
-if(!itemMaster.includes(item)){
+        // エラーがある場合
+        if (hasError) {
+            spreadsheet[0].setStyle(i, {
+                backgroundColor: '#ffcccc'
+            });
+            errorMessages.push((i + 1) + "行目：" + rowErrors.join("、"));
+        }
+    }
 
-spreadsheet[0].setValueFromCoords(COL.STATUS,i,"修理案件／項目訂正");
-
-}else{
-
-spreadsheet[0].setValueFromCoords(COL.STATUS,i,"修理案件");
-
-}
-
-}
-
-if(!signedDt){
-
-errorMessages.push((i+1)+"行目：登録日未入力");
-hasError=true;
-
-}
-
-if(!machine_nm){
-
-errorMessages.push((i+1)+"行目：適用機器名未入力");
-hasError=true;
-
-}
-
-if(!itemMaster.includes(item)){
-
-errorMessages.push((i+1)+"行目：図品番エラー");
-hasError=true;
-
-}
-
-if(!qty || qty<=0){
-
-errorMessages.push((i+1)+"行目：数量エラー");
-hasError=true;
-
-}
-
-if(!price || price<=0){
-
-errorMessages.push((i+1)+"行目：単価エラー");
-hasError=true;
-
-}
-
-if(!material_cd){
-
-errorMessages.push((i+1)+"行目：品目コードエラー");
-hasError=true;
-
-}
-
-if(hasError){
-
-spreadsheet[0].setStyle(i,{backgroundColor:'#ffcccc'});
-
-}
-
-}
-
-document.getElementById("errorList").innerHTML=
-errorMessages.length>0
-?errorMessages.join("<br>")
-:"エラーなし";
-
+    // アラート表示
+    if (errorMessages.length > 0) {
+        alert("【エラー一覧】\n\n" + errorMessages.join("\n"));
+    } else {
+        alert("エラーはありません。");
+    }
 }
 
 // ===== 正常データ抽出 =====
@@ -326,31 +332,78 @@ return validData;
 }
 
 // ===== 保存 =====
-function saveData(){
+function saveData() {
 
-const validData=getValidData();
+    // 最新状態をチェック
+    checkData();
 
-if(validData.length===0){
+    const data = spreadsheet[0].getData();
+    let validData = [];
+    let errorRows = [];
 
-alert("登録可能なデータがありません");
-return;
+    for (let i = 0; i < data.length; i++) {
+        const row = data[i];
 
-}
+        // 空行はスキップ
+        if (row.every(cell => !cell)) continue;
 
-if(errorMessages.length>0){
+        const signedDt = row[COL.DATE];
+        const orderNo = row[COL.ORDER];
+        const machine_nm = row[COL.MACHINE];
+        const material_cd = row[COL.MATERIAL];
+        const item = row[COL.ITEM];
+        const qty = row[COL.QTY];
+        const price = row[COL.PRICE];
 
-alert("エラーがあるため一部データのみ登録されます");
+        let hasError = false;
 
-}
+        if (!signedDt) hasError = true;
+        if (!machine_nm) hasError = true;
+        if (!material_cd) hasError = true;
+        if (!itemMaster.includes(item)) hasError = true;
+        if (!qty || qty <= 0) hasError = true;
+        if (!price || price <= 0) hasError = true;
 
-if(confirm(validData.length+"件登録しますか？")){
+        if (hasError) {
+            errorRows.push(i + 1);
+        } else {
+            // 配列をコピー
+            let newRow = [...row];
 
-spreadsheet[1].setData(validData);
+            // 修理案件の場合はステータスを「訂正済み」に変更
+            if (orderNo && orderNo.startsWith("G")) {
+                newRow[COL.STATUS] = "訂正済み";
+                spreadsheet[0].setValueFromCoords(
+                    COL.STATUS,
+                    i,
+                    "訂正済み"
+                );
+            }
 
-alert("正常データを別シートに表示しました");
+            validData.push(newRow);
+        }
+    }
 
-}
+    // 登録可能データがない場合
+    if (validData.length === 0) {
+        alert("登録可能なデータがありません。");
+        return;
+    }
 
+    // エラー行がある場合の通知
+    if (errorRows.length > 0) {
+        alert(
+            "以下の行はエラーのため除外されます。\n" +
+            errorRows.join(", ") + "行目"
+        );
+    }
+
+    // 保存確認
+    if (confirm(validData.length + "件登録しますか？")) {
+        // 正常データシートへ反映
+        spreadsheet[1].setData(validData);
+        alert("正常データを保存しました。（DIC連携準備完了）");
+    }
 }
 
 </script>
