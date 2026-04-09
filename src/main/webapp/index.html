@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<title>Jspreadsheet Local Sample</title>
+<title>DIC検証画面</title>
 
 <link rel="stylesheet" href="css/jsuites.min.css" />
 <link rel="stylesheet" href="css/jspreadsheet.min.css" />
@@ -12,26 +12,347 @@
 
 <style>
 body {
-	margin: 20px;
+	font-family: Arial;
+	padding: 20px;
+}
+
+#spreadsheet {
+	margin-top: 20px;
+}
+
+button {
+	margin-top: 10px;
+	padding: 10px;
+}
+
+#errorList {
+	margin-top: 20px;
+	color: red;
 }
 </style>
 </head>
 <body>
 
-	<h2>Jspreadsheet Local Sample</h2>
-	<div id="sheet">
+	<h2>受注未登録のエラー一覧</h2>
+
+	<button onclick="openEditModal()">項目訂正</button>
+	<div id="spreadsheet"></div>
+
+	<button onclick="checkData()">再チェック</button>
+	<button onclick="saveData()">保存</button>
+
+	<div id="errorList"></div>
+
+	<!-- モーダル -->
+	<div id="modal"
+		style="display: none; position: fixed; top: 20%; left: 30%; width: 320px; background: white; border: 1px solid black; padding: 20px;">
+		<h3>項目訂正</h3>
+
+		図品番:<br> <input type="text" id="editItem"><br>
+		<br> 数量:<br> <input type="number" id="editQty"><br>
+		<br> 単価:<br> <input type="number" id="editPrice"><br>
+		<br>
+
+		<button onclick="applyEdit()">更新</button>
+		<button onclick="closeModal()">閉じる</button>
 	</div>
 
 	<script>
-    jspreadsheet(document.getElementById('sheet'), {
-        worksheets: [{
-            data: [
-                ['2024/10/24', '文房具', 420],
-                ['2024/10/26', '外食費', 1300]
-            ],
-            columns:[]
-        }]
-    });
+
+// ===== 列番号定義 =====
+const COL = {
+CHECK:0,
+DATE:1,
+NO:2,
+ORDER:3,
+DELIVERY:4,
+MACHINE:5,
+MATERIAL:6,
+ITEM:7,
+QTY:8,
+PRICE:9,
+STATUS:10
+};
+
+const itemMaster = ["A001","A002","A003"];
+
+// ===== シート作成 =====
+const spreadsheet = jspreadsheet(document.getElementById('spreadsheet'),{
+
+worksheets:[
+
+{
+worksheetName:"エラー一覧",
+
+data:[
+[false,'','','G001','','サーバA','M01','A999',0,-100,''],
+[false,'','','G002','','サーバB','M02','A001',0,-10,'']
+],
+
+columns:[
+{type:'checkbox',title:'訂正'},
+{type:'text',title:'登録日'},
+{type:'text',title:'整理No'},
+{type:'text',title:'注番'},
+{type:'text',title:'納期'},
+{type:'text',title:'適用機器名'},
+{type:'text',title:'品目CD'},
+{type:'text',title:'図番-品番'},
+{type:'numeric',title:'手配数'},
+{type:'numeric',title:'発注単価'},
+{type:'text',title:'保守部品形名'}
+]
+
+},
+
+{
+worksheetName:"正常データ",
+data:[],
+columns:[
+{type:'checkbox',title:'訂正'},
+{type:'text',title:'登録日'},
+{type:'text',title:'整理No'},
+{type:'text',title:'注番'},
+{type:'text',title:'納期'},
+{type:'text',title:'適用機器名'},
+{type:'text',title:'品目CD'},
+{type:'text',title:'図番-品番'},
+{type:'numeric',title:'手配数'},
+{type:'numeric',title:'発注単価'},
+{type:'text',title:'保守部品形名'}
+]
+}
+
+]
+
+});
+
+let selectedRowIndex=null;
+
+// ===== 訂正画面 =====
+function openEditModal(){
+
+const data=spreadsheet[0].getData();
+let selectedRows=[];
+
+for(let i=0;i<data.length;i++){
+if(data[i][COL.CHECK]===true){
+selectedRows.push(i);
+}
+}
+
+if(selectedRows.length===0){
+alert("訂正対象を選択してください");
+return;
+}
+
+if(selectedRows.length>1){
+alert("1行のみ選択してください");
+return;
+}
+
+selectedRowIndex=selectedRows[0];
+
+const row=data[selectedRowIndex];
+
+document.getElementById("editItem").value=row[COL.ITEM];
+document.getElementById("editQty").value=row[COL.QTY];
+document.getElementById("editPrice").value=row[COL.PRICE];
+
+document.getElementById("modal").style.display="block";
+
+}
+
+// ===== 更新 =====
+function applyEdit(){
+
+const item=document.getElementById("editItem").value;
+const qty=parseInt(document.getElementById("editQty").value);
+const price=parseInt(document.getElementById("editPrice").value);
+
+spreadsheet[0].setValueFromCoords(COL.ITEM,selectedRowIndex,item);
+spreadsheet[0].setValueFromCoords(COL.QTY,selectedRowIndex,qty);
+spreadsheet[0].setValueFromCoords(COL.PRICE,selectedRowIndex,price);
+
+spreadsheet[0].setValueFromCoords(COL.CHECK,selectedRowIndex,false);
+
+closeModal();
+
+checkData();
+
+}
+
+function closeModal(){
+document.getElementById("modal").style.display="none";
+}
+
+let errorMessages=[];
+
+// ===== エラーチェック =====
+function checkData(){
+
+const data=spreadsheet[0].getData();
+errorMessages=[];
+
+for(let i=0;i<data.length;i++){
+
+spreadsheet[0].setStyle(i,{backgroundColor:''});
+
+}
+
+for(let i=0;i<data.length;i++){
+
+const row=data[i];
+
+if(row.every(cell=>!cell)) continue;
+
+const signedDt=row[COL.DATE];
+const orderNo=row[COL.ORDER];
+const machine_nm=row[COL.MACHINE];
+const material_cd=row[COL.MATERIAL];
+const item=row[COL.ITEM];
+const qty=row[COL.QTY];
+const price=row[COL.PRICE];
+
+let hasError=false;
+
+if(orderNo && orderNo.startsWith("G")){
+
+if(!itemMaster.includes(item)){
+
+spreadsheet[0].setValueFromCoords(COL.STATUS,i,"修理案件／項目訂正");
+
+}else{
+
+spreadsheet[0].setValueFromCoords(COL.STATUS,i,"修理案件");
+
+}
+
+}
+
+if(!signedDt){
+
+errorMessages.push((i+1)+"行目：登録日未入力");
+hasError=true;
+
+}
+
+if(!machine_nm){
+
+errorMessages.push((i+1)+"行目：適用機器名未入力");
+hasError=true;
+
+}
+
+if(!itemMaster.includes(item)){
+
+errorMessages.push((i+1)+"行目：図品番エラー");
+hasError=true;
+
+}
+
+if(!qty || qty<=0){
+
+errorMessages.push((i+1)+"行目：数量エラー");
+hasError=true;
+
+}
+
+if(!price || price<=0){
+
+errorMessages.push((i+1)+"行目：単価エラー");
+hasError=true;
+
+}
+
+if(!material_cd){
+
+errorMessages.push((i+1)+"行目：品目コードエラー");
+hasError=true;
+
+}
+
+if(hasError){
+
+spreadsheet[0].setStyle(i,{backgroundColor:'#ffcccc'});
+
+}
+
+}
+
+document.getElementById("errorList").innerHTML=
+errorMessages.length>0
+?errorMessages.join("<br>")
+:"エラーなし";
+
+}
+
+// ===== 正常データ抽出 =====
+function getValidData(){
+
+const data=spreadsheet[0].getData();
+let validData=[];
+
+for(let i=0;i<data.length;i++){
+
+const row=data[i];
+
+const signedDt=row[COL.DATE];
+const machine_nm=row[COL.MACHINE];
+const material_cd=row[COL.MATERIAL];
+const item=row[COL.ITEM];
+const qty=row[COL.QTY];
+const price=row[COL.PRICE];
+
+let hasError=false;
+
+if(!signedDt) hasError=true;
+if(!machine_nm) hasError=true;
+if(!itemMaster.includes(item)) hasError=true;
+if(!qty || qty<=0) hasError=true;
+if(!price || price<=0) hasError=true;
+if(!material_cd) hasError=true;
+
+if(!hasError){
+
+validData.push(row);
+
+}
+
+}
+
+return validData;
+
+}
+
+// ===== 保存 =====
+function saveData(){
+
+const validData=getValidData();
+
+if(validData.length===0){
+
+alert("登録可能なデータがありません");
+return;
+
+}
+
+if(errorMessages.length>0){
+
+alert("エラーがあるため一部データのみ登録されます");
+
+}
+
+if(confirm(validData.length+"件登録しますか？")){
+
+spreadsheet[1].setData(validData);
+
+alert("正常データを別シートに表示しました");
+
+}
+
+}
+
 </script>
 
 </body>
