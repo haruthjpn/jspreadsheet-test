@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>Jspreadsheet Local Sample</title>
+
+<link rel="stylesheet" href="css/jsuites.min.css" />
+<link rel="stylesheet" href="css/jspreadsheet.min.css" />
+
+<script src="js/jsuites.min.js"></script>
+<script src="js/jspreadsheet.min.js"></script>
+
+<style>
+body {
+	margin: 20px;
+}
+</style>
+</head>
+<body>
+
+	<h2>Jspreadsheet Local Sample</h2>
+	<div id="sheet">
+	</div>
+
+	<script>
+    jspreadsheet(document.getElementById('sheet'), {
+        worksheets: [{
+            data: [
+                ['2024/10/24', '文房具', 420],
+                ['2024/10/26', '外食費', 1300]
+            ],
+            columns:[]
+        }]
+    });
+</script>
+
+</body>
+</html>

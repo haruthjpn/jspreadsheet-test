@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>DIC検証画面</title>
+
+<!-- Jspreadsheet CE -->
+<link rel="stylesheet" href="css/jsuites.min.css" />
+<link rel="stylesheet" href="css/jspreadsheet.min.css" />
+
+<script src="js/jsuites.min.js"></script>
+<script src="js/jspreadsheet.min.js"></script>
+<style>
+body {
+	font-family: Arial;
+	padding: 20px;
+}
+
+#spreadsheet {
+	margin-top: 20px;
+}
+
+button {
+	margin-top: 10px;
+	padding: 10px;
+}
+</style>
+</head>
+<body>
+
+	<h2>DIC入力チェック検証</h2>
+
+	<div id="spreadsheet"></div>
+
+	<button onclick="validateData()">保存</button>
+
+	<script>
+    // 図品番マスタ（疑似）
+    const itemMaster = ["A001", "A002", "A003"];
+
+    const spreadsheet = jspreadsheet(document.getElementById('spreadsheet'), {
+        worksheets: [{
+            data: [
+                ['', '', '', '', '','','','','','']
+            ],
+            columns: [
+                { type: 'text', title: '登録日', width: 150 },
+                { type: 'text', title: '整理No', width: 150 },
+                { type: 'text', title: '注番', width: 100 },
+                { type: 'text', title: '納期', width: 100 },
+                { type: 'text', title: '適用機器名', width: 150 },
+                { type: 'text', title: '品目CD', width: 100 },
+                { type: 'text', title: '図番-品番', width: 130 },
+                { type: 'numeric', title: '手配数', width: 100 },
+                { type: 'numeric', title: '発注単価', width: 100 },
+                { type: 'text', title: '保守部品形名', width: 150 }
+            ]
+        }]
+    });
+
+    function validateData() {
+        const data = spreadsheet[0].getData();
+
+        for (let i = 0; i < data.length; i++) {
+            const row = data[i];
+
+            let hasData = false;
+
+            for (let i = 0; i < data.length; i++) {
+                const row = data[i];
+
+                if (row.every(cell => !cell)) {
+                    continue;
+                }
+
+                hasData = true;
+
+                // ↓ここから既存チェック
+            }
+
+            // ループ後に追加
+            if (!hasData) {
+                alert("1件もデータが入力されていません");
+                return;
+            }
+
+            const signedDt = row[0];
+            const orderNo = row[2];
+            const machine_nm = row[4];
+            const material_cd = row[5];
+            const item = row[6];
+            const tehai_qty = row[7];
+            const order_price = row[8];
+
+            // 修理案件判定
+	            if (orderNo && orderNo.startsWith("G")) {
+	    if (!itemMaster.includes(item)) {
+	        spreadsheet[0].setValueFromCoords(9, i, "修理案件／項目訂正");
+	    } else {
+	        spreadsheet[0].setValueFromCoords(9, i, "修理案件");
+	    }
+	}
+
+            // 必須チェック
+            if (!signedDt) {
+                alert((i+1) + "行目：登録日が未入力です");
+                return;
+            }
+
+            if (!machine_nm) {
+                alert((i+1) + "行目：適用機器名が未入力です");
+                return;
+            }
+
+            // 図品番チェック
+            if (!itemMaster.includes(item)) {
+                if (orderNo && orderNo.startsWith("G")) {
+                    console.warn((i+1) + "行目：図品番要訂正");
+                } else {
+                    alert((i+1) + "行目：図番‐品番が不正です: " + item);
+                    return;
+                }
+            }
+
+            // 数量チェック
+            if (!tehai_qty || tehai_qty <= 0) {
+                alert((i+1) + "行目：手配数量が不正です");
+                return;
+            }
+
+            // 単価チェック
+            if (!order_price || order_price <= 0) {
+                alert((i+1) + "行目：発注単価が不正です");
+                return;
+            }
+
+            // 品目コードチェック
+            if (!material_cd || material_cd.length < 3) {
+                alert((i+1) + "行目：品目コードが不正です");
+                return;
+            }
+        }
+
+        if (confirm("保存しますか？")) {
+            alert("OK：DIC連携");
+        }
+    }
+</script>
+
+</body>
+</html>

@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>DIC検証画面</title>
+
+<link rel="stylesheet" href="css/jsuites.min.css" />
+<link rel="stylesheet" href="css/jspreadsheet.min.css" />
+
+<script src="js/jsuites.min.js"></script>
+<script src="js/jspreadsheet.min.js"></script>
+
+<style>
+body {
+	font-family: Arial;
+	padding: 20px;
+}
+
+#spreadsheet {
+	margin-top: 20px;
+}
+
+button {
+	margin-top: 10px;
+	padding: 10px;
+}
+
+.error-row {
+	background-color: #ffcccc !important;
+}
+
+#errorList {
+	margin-top: 20px;
+	color: red;
+}
+</style>
+</head>
+<body>
+
+	<h2>受注未登録のエラー一覧</h2>
+	<button onclick="openEditModal()">項目訂正</button>
+	<div id="spreadsheet"></div>
+
+	<button onclick="checkData()">再チェック</button>
+	<button onclick="saveData()">保存</button>
+
+
+	<div id="errorList"></div>
+	<div id="modal"
+		style="display: none; position: fixed; top: 20%; left: 30%; width: 320px; background: white; border: 1px solid black; padding: 20px;">
+		<h3>項目訂正</h3>
+
+		図品番:<br> <input type="text" id="editItem"><br> <br>
+		数量:<br> <input type="number" id="editQty"><br> <br>
+		単価:<br> <input type="number" id="editPrice"><br> <br>
+
+		<button onclick="applyEdit()">更新</button>
+		<button onclick="closeModal()">閉じる</button>
+	</div>
+
+	<script>
+const itemMaster = ["A001", "A002", "A003"];
+
+const spreadsheet = jspreadsheet(document.getElementById('spreadsheet'), {
+    worksheets: [{
+    	data: [
+    	    [false, '', '', 'G001', '', 'サーバA', 'M01', 'A999', 0, -100, ''],
+    	    [false, '', '', 'G002', '', 'サーバB', 'M02', 'A001', 0, -10, '']
+    	],
+
+        columns: [
+            { type: 'checkbox', title: '訂正', width: 60 },
+            { type: 'text', title: '登録日', width: 120 },
+            { type: 'text', title: '整理No', width: 100 },
+            { type: 'text', title: '注番', width: 100 },
+            { type: 'text', title: '納期', width: 100 },
+            { type: 'text', title: '適用機器名', width: 120 },
+            { type: 'text', title: '品目CD', width: 100 },
+            { type: 'text', title: '図番-品番', width: 120 },
+            { type: 'numeric', title: '手配数', width: 80 },
+            { type: 'numeric', title: '発注単価', width: 100 },
+            { type: 'text', title: '保守部品形名', width: 150 }
+        ]
+    }]
+});
+
+let selectedRowIndex = null;
+
+function openEditModal() {
+    const data = spreadsheet[0].getData();
+
+    let selectedRows = [];
+
+    // チェックされた行を取得
+    for (let i = 0; i < data.length; i++) {
+        if (data[i][0] === true) {
+            selectedRows.push(i);
+        }
+    }
+
+    // チェックなし
+    if (selectedRows.length === 0) {
+        alert("訂正対象を選択してください");
+        return;
+    }
+
+    // 複数選択NG（SAP仕様）
+    if (selectedRows.length > 1) {
+        alert("1行のみ選択してください");
+        return;
+    }
+
+    selectedRowIndex = selectedRows[0];
+
+    const row = data[selectedRowIndex];
+
+    // モーダルに値セット
+    document.getElementById("editItem").value = row[7];
+    document.getElementById("editQty").value = row[8];
+    document.getElementById("editPrice").value = row[9];
+
+    document.getElementById("modal").style.display = "block";
+}
+
+function applyEdit() {
+    const item = document.getElementById("editItem").value;
+    const qty = parseInt(document.getElementById("editQty").value);
+    const price = parseInt(document.getElementById("editPrice").value);
+
+    // シートに反映
+    spreadsheet[0].setValueFromCoords(7, selectedRowIndex, item);
+    spreadsheet[0].setValueFromCoords(8, selectedRowIndex, qty);
+    spreadsheet[0].setValueFromCoords(9, selectedRowIndex, price);
+
+    // チェック外す（これ重要🔥）
+    spreadsheet[0].setValueFromCoords(0, selectedRowIndex, false);
+
+    closeModal();
+}
+function closeModal() {
+    document.getElementById("modal").style.display = "none";
+}
+
+let errorMessages = [];
+
+// エラーチェック
+function checkData() {
+    const data = spreadsheet[0].getData();
+    errorMessages = [];
+
+    // 全行の色リセット
+    for (let i = 0; i < data.length; i++) {
+        spreadsheet[0].setStyle(i, null);
+    }
+
+    for (let i = 0; i < data.length; i++) {
+        const row = data[i];
+
+        if (row.every(cell => !cell)) continue;
+
+        const signedDt = row[1];
+        const orderNo = row[3];
+        const machine_nm = row[5];
+        const material_cd = row[6];
+        const item = row[7];
+        const qty = row[8];
+        const price = row[9];
+
+        let hasError = false;
+
+        // 修理案件判定
+        if (orderNo && orderNo.startsWith("G")) {
+            if (!itemMaster.includes(item)) {
+                spreadsheet[0].setValueFromCoords(10, i, "修理案件／項目訂正");
+            } else {
+                spreadsheet[0].setValueFromCoords(10, i, "修理案件");
+            }
+        }
+
+        if (!signedDt) {
+            errorMessages.push((i+1) + "行目：登録日未入力");
+            hasError = true;
+        }
+
+        if (!machine_nm) {
+            errorMessages.push((i+1) + "行目：適用機器名未入力");
+            hasError = true;
+        }
+
+        if (!itemMaster.includes(item)) {
+            errorMessages.push((i+1) + "行目：図品番エラー");
+            hasError = true;
+        }
+
+        if (!qty || qty <= 0) {
+            errorMessages.push((i+1) + "行目：数量エラー");
+            hasError = true;
+        }
+
+        if (!price || price <= 0) {
+            errorMessages.push((i+1) + "行目：単価エラー");
+            hasError = true;
+        }
+
+        if (!material_cd) {
+            errorMessages.push((i+1) + "行目：品目コードエラー");
+            hasError = true;
+        }
+
+        // 行を赤くする
+        if (hasError) {
+            spreadsheet[0].setStyle(i, { backgroundColor: '#ffcccc' });
+        }
+    }
+
+    // エラー表示
+    document.getElementById("errorList").innerHTML =
+        errorMessages.length > 0
+        ? errorMessages.join("<br>")
+        : "エラーなし";
+}
+
+// 保存処理
+function saveData() {
+    const validData = getValidData();
+
+    if (validData.length === 0) {
+        alert("登録可能なデータがありません");
+        return;
+    }
+
+    if (errorMessages.length > 0) {
+        alert("エラーがあるため一部データのみ登録されます");
+    }
+
+    if (confirm(validData.length + "件登録しますか？")) {
+        console.log("登録データ", validData);
+        alert("OK（DIC連携）");
+    }
+    exportCSV(validData);
+}
+
+function getValidData() {
+    const data = spreadsheet[0].getJson();
+
+    let validData = [];
+
+    for (let i = 0; i < data.length; i++) {
+        const row = data[i];
+
+        if (row.every(cell => !cell)) continue;
+
+        const signedDt = row[COL.DATE];
+        const orderNo = row[COL.ORDER];
+        const machine_nm = row[COL.MACHINE];
+        const material_cd = row[COL.MATERIAL];
+        const item = row[COL.ITEM];
+        const qty = row[COL.QTY];
+        const price = row[COL.PRICE];
+
+        let hasError = false;
+
+        if (!signedDt) hasError = true;
+        if (!machine_nm) hasError = true;
+        if (!itemMaster.includes(item)) hasError = true;
+        if (!qty || qty <= 0) hasError = true;
+        if (!price || price <= 0) hasError = true;
+        if (!material_cd) hasError = true;
+
+        // エラーなしだけ追加
+        if (!hasError) {
+            validData.push(row);
+        }
+    }
+
+    return validData;
+}
+function exportCSV(data) {
+    let csv = data.map(row => row.join(",")).join("\n");
+
+    console.log(csv);
+}
+
+</script>
+
+</body>
+</html>
