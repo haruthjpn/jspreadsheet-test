@@ -277,43 +277,50 @@ function checkData() {
     const data = sheet.getData();
     let msgs = [];
     
-    // スタイルのリセットとエラー判定を1つずつ確実に行う
     for(let i=0; i<data.length; i++) {
+        const status = sheet.getValueFromCoords(COL.STATUS, i);
+        if (status === "削除対象") continue;
+
         let rowErrors = [];
         const item = data[i][COL.ITEM];
         const qty = parseFloat(data[i][COL.QTY]);
         const price = parseFloat(data[i][COL.PRICE]);
 
-        // --- 1. スタイルの初期設定（一度全部クリアにする） ---
-        // 背景を白、文字を黒に戻します
-        sheet.setStyle(jspreadsheet.helpers.getColumnNameFromId([COL.ITEM, i]), 'background-color', '');
-        sheet.setStyle(jspreadsheet.helpers.getColumnNameFromId([COL.ITEM, i]), 'color', '');
-        sheet.setStyle(jspreadsheet.helpers.getColumnNameFromId([COL.QTY, i]), 'background-color', '');
-        sheet.setStyle(jspreadsheet.helpers.getColumnNameFromId([COL.QTY, i]), 'color', '');
-        sheet.setStyle(jspreadsheet.helpers.getColumnNameFromId([COL.PRICE, i]), 'background-color', '');
-        sheet.setStyle(jspreadsheet.helpers.getColumnNameFromId([COL.PRICE, i]), 'color', '');
+        // --- 1. スタイルのリセット ---
+        const targetCols = [COL.ITEM, COL.QTY, COL.PRICE];
+        targetCols.forEach(colIdx => {
+            // getColumnNameFromId の代わりに直接 A1 形式の文字列を作成（エラー回避）
+            const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+            const cellName = letters[colIdx] + (i + 1); 
+            
+            sheet.setStyle(cellName, 'background-color', '');
+            sheet.setStyle(cellName, 'color', '');
+        });
 
         // --- 2. 個別バリデーションと色付け ---
+        const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
         if(!itemMaster.includes(item)) {
             rowErrors.push("図品番エラー");
-            // 直接スタイルを注入
-            sheet.setStyle(jspreadsheet.helpers.getColumnNameFromId([COL.ITEM, i]), 'background-color', '#ffcccc');
-            sheet.setStyle(jspreadsheet.helpers.getColumnNameFromId([COL.ITEM, i]), 'color', 'red');
+            const cell = letters[COL.ITEM] + (i + 1);
+            sheet.setStyle(cell, 'background-color', '#ffcccc');
+            sheet.setStyle(cell, 'color', 'red'); // 文字を赤く
         }
         
         if(isNaN(qty) || qty <= 0) {
             rowErrors.push("数量エラー");
-            sheet.setStyle(jspreadsheet.helpers.getColumnNameFromId([COL.QTY, i]), 'background-color', '#ffcccc');
-            sheet.setStyle(jspreadsheet.helpers.getColumnNameFromId([COL.QTY, i]), 'color', 'red');
+            const cell = letters[COL.QTY] + (i + 1);
+            sheet.setStyle(cell, 'background-color', '#ffcccc');
+            sheet.setStyle(cell, 'color', 'red'); // 文字を赤く
         }
         
         if(isNaN(price) || price <= 0) {
             rowErrors.push("単価エラー");
-            sheet.setStyle(jspreadsheet.helpers.getColumnNameFromId([COL.PRICE, i]), 'background-color', '#ffcccc');
-            sheet.setStyle(jspreadsheet.helpers.getColumnNameFromId([COL.PRICE, i]), 'color', 'red');
+            const cell = letters[COL.PRICE] + (i + 1);
+            sheet.setStyle(cell, 'background-color', '#ffcccc');
+            sheet.setStyle(cell, 'color', 'red'); // 文字を赤く
         }
 
-        // エラー内容をJspreadsheetのセル（エラー理由列）にセット
         const errMsg = rowErrors.join("、");
         sheet.setValueFromCoords(COL.ERROR, i, errMsg);
         
@@ -322,15 +329,6 @@ function checkData() {
         }
     }
 
-    // --- 3. 画面の強制更新（これが重要） ---
-    // Jspreadsheetに表示の再描画を促します
-    if (msgs.length > 0) {
-        alert("【エラー箇所】\n\n" + msgs.join("\n"));
-    } else {
-        alert("エラーはありません。保存可能です。");
-    }
-
-    // HTML側のエラーリスト（赤文字）も確実に更新
     const errorListDiv = document.getElementById("errorList");
     if (errorListDiv) {
         errorListDiv.innerHTML = msgs.length ? msgs.join("<br>") : "エラーなし（「保存」が可能です）";
