@@ -8,110 +8,97 @@
 <link rel="stylesheet" href="css/jspreadsheet.min.css" />
 <script src="js/jsuites.min.js"></script>
 <script src="js/jspreadsheet.min.js"></script>
-<script
-	src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
 <style>
 body {
-	font-family: "Meiryo", sans-serif;
-	padding: 20px;
+    font-family: "Meiryo", sans-serif;
+    padding: 20px;
 }
-
 button {
-	margin: 10px 5px 10px 0;
-	padding: 8px 15px;
-	cursor: pointer;
+    margin: 10px 5px 10px 0;
+    padding: 8px 15px;
+    cursor: pointer;
 }
-
 #errorList {
-	margin-top: 10px;
-	color: red;
-	font-weight: bold;
-	min-height: 1.2em;
+    margin-top: 10px;
+    color: red;
+    font-weight: bold;
 }
-
 #editArea {
-	margin-top: 20px;
-	padding: 15px;
-	border: 2px solid #007bff;
-	background-color: #f8f9fa;
-	border-radius: 4px;
-	display: none;
-}
-
-.jss_container {
-	margin-top: 10px;
+    margin-top: 20px;
+    padding: 15px;
+    border: 2px solid #007bff;
+    background-color: #f8f9fa;
+    border-radius: 4px;
+    display: none;
 }
 </style>
 </head>
+
 <body>
 
-	<h2>受注未登録のエラー一覧</h2>
+<h2>受注未登録のエラー一覧</h2>
 
-	<div class="controls">
-		<button onclick="openEditModal()">項目訂正</button>
-		<!-- <button onclick="checkData(true)">再チェック</button> -->
-		<button onclick="saveToValidSheet()"
-			style="background-color: #ffc107;">保存（正常データへ移動）</button>
-		<span style="margin-left: 20px;"> <input type="file"
-			id="csvFile" accept=".csv" style="display: none"
-			onchange="importCSV()">
-			<button onclick="document.getElementById('csvFile').click()">CSV取込</button>
-			<button onclick="exportExcel()">Excel出力</button>
-		</span>
-	</div>
+<div class="controls">
+    <button onclick="openEditModal()">項目訂正</button>
+    <button onclick="saveToValidSheet()" style="background-color:#ffc107;">
+        保存（正常データへ移動）
+    </button>
 
-	<div id="spreadsheet"></div>
-	<div id="errorList"></div>
+    <input type="file" id="csvFile" accept=".csv" style="display:none" onchange="importCSV()">
+    <button onclick="document.getElementById('csvFile').click()">CSV取込</button>
+    <button onclick="exportExcel()">Excel出力</button>
+</div>
 
-	<div id="editArea">
-		<h3>項目訂正画面</h3>
-		<div id="editSheet"></div>
-		<div style="margin-top: 15px;">
-			<button onclick="applyEdit()"
-				style="background-color: #28a745; color: white; border: none;">反映</button>
-			<button onclick="closeEditArea()">キャンセル</button>
-		</div>
-	</div>
+<div id="spreadsheet"></div>
+<div id="errorList"></div>
 
-	<script>
+<div id="editArea">
+    <h3>項目訂正画面</h3>
+    <div id="editSheet"></div>
+    <br>
+    <button onclick="applyEdit()" style="background-color:#28a745;color:white;">反映</button>
+    <button onclick="closeEditArea()">キャンセル</button>
+</div>
+
+<script>
+// =============================
+// 列定義
+// =============================
 const COL = {
     CHECK: 0, DATE: 1, NO: 2, ORDER: 3, DELIVERY: 4,
     MACHINE: 5, MATERIAL: 6, ITEM: 7, QTY: 8, PRICE: 9,
     RECEPTION: 10, STATUS: 11, ERROR: 12
 };
 
-const itemMaster = ["A001", "A002", "A003"];
+let itemMaster = [];
+let orderData = [];
 let selectedRowIndex = null;
 
-// メインスプレッドシートの初期化（2枚構成）
-const spreadsheet = jspreadsheet(document.getElementById('spreadsheet'), {
-    onchange: function(instance, cell, x, y, value) {
-        // 適用機器名列（COL.MACHINE）が変更された場合
-        if (x === COL.MACHINE && value === "D") {
-            const confirmDelete = confirm(
-                "適用機器名に「D」が設定されました。\n" +
-                "削除フラグを設定すると、通常の処理では解除できません。\n\n" +
-                "この案件を削除しますか？"
-            );
+// =============================
+// マスタデータ読込
+// =============================
+async function loadItemMaster() {
+    const response = await fetch("./data/itemMaster.json");
+    const data = await response.json();
+    itemMaster = data.items;
+}
 
-            if (confirmDelete) {
-                // 行削除
-                instance.deleteRow(y);
-                alert("案件を削除しました。");
-            } else {
-                // 入力を元に戻す
-                instance.setValueFromCoords(x, y, "");
-            }
-        }
-    },
+async function loadOrderData() {
+    const response = await fetch("./data/orderData.json");
+    const data = await response.json();
+    orderData = data.orderdatas;
+}
+
+// =============================
+// メインシート初期化
+// =============================
+const spreadsheet = jspreadsheet(document.getElementById('spreadsheet'), {
     worksheets: [
         {
             worksheetName: "エラー一覧",
-            data: [
-                [false,'2026/04/05','E7397','G001','2026/04/20','HT-F405B-CHB8','2014985','A999', 0, -100, '2026/04/05', '修理案件／項目訂正', ''],
-                [false,'2026/04/06','P5465','G002','2026/04/21','H-65A3-5','2006819','A001', 0, -10, '2026/04/06', '修理案件／項目訂正', '']
-            ],
+            data: [],
             columns: [
                 { type:'checkbox', title:'訂正', width:50 },
                 { type:'text', title:'登録日', width:100 },
@@ -121,120 +108,101 @@ const spreadsheet = jspreadsheet(document.getElementById('spreadsheet'), {
                 { type:'text', title:'適用機器名', width:150 },
                 { type:'text', title:'品名CD', width:80 },
                 { type:'text', title:'図番・品番', width:100 },
-                { type:'numeric', title:'手配数', width:70 },
-                { type:'numeric', title:'発注単価', width:80 },
+                { type:'numeric', title:'手配数', width:80 },
+                { type:'numeric', title:'発注単価', width:100 },
                 { type:'text', title:'受付日', width:100 },
-                { type:'text', title:'保守部品形名', width:180 },
-                { type:'text', title:'エラー理由', width:200, readOnly: true }
-                ],
-                onchange: function(instance, cell, x, y, value) {
-                    // 1. 変更されたのが「適用機器名(COL.MACHINE = 5)」か判定
-                    if (parseInt(x) === COL.MACHINE) {
-                        // 2. 入力値が "D" または "d" か判定
-                        if (value === "D" || value === "d") {
-                            
-                            // 3. ブラウザ標準の確認ダイアログを表示
-                            // (jSuites.confirmが動かない環境でもこれなら100%動きます)
-                            const result = window.confirm(
-                                "案件削除の確認\n\n適用機器名に 'D' が設定されました。この案件を削除対象にしますか？\n削除フラグを設定すると解除できません。"
-                            );
+                { type:'text', title:'ステータス', width:150 },
+                { type:'text', title:'エラー理由', width:200, readOnly:true }
+            ],
+            onchange: function(instance, cell, x, y, value) {
+                if (x === COL.MACHINE && (value === "D" || value === "d")) {
+                    const result = confirm(
+                        "適用機器名に「D」が設定されました。\n" +
+                        "削除フラグを設定すると解除できません。\n\n" +
+                        "この案件を削除しますか？"
+                    );
 
-                            if (result) {
-                                // 【OK】が押された場合
-                                // 編集ロックがかかる前にステータスを書き換え
-                                instance.jspreadsheet.setValueFromCoords(COL.STATUS, y, "削除対象");
-                                instance.jspreadsheet.setValueFromCoords(COL.CHECK, y, false);
-                                
-                                // 行の色を変える（一括設定）
-                                const rowName = y;
-                                for(let col=0; col<=COL.ERROR; col++) {
-                                    instance.jspreadsheet.setStyle(jspreadsheet.helpers.getColumnNameFromId([col, y]), 'background-color', '#f0f0f0');
-                                    instance.jspreadsheet.setStyle(jspreadsheet.helpers.getColumnNameFromId([col, y]), 'color', '#999');
-                                }
-                                alert("削除フラグを設定しました。");
-                            } else {
-                                // 【キャンセル】が押された場合
-                                // 入力された "D" を消去して元に戻す
-                                // setTimeoutを使うことで、onChangeの処理が終わった直後に実行させ、競合を防ぎます
-                                setTimeout(function() {
-                                    instance.jspreadsheet.setValueFromCoords(COL.MACHINE, y, "");
-                                }, 10);
-                            }
-                        }
+                    if (result) {
+                        instance.deleteRow(y);
+                        alert("案件を削除しました。");
+                    } else {
+                        instance.setValueFromCoords(x, y, "");
                     }
-                },
-                onbeforechange: function(instance, cell, x, y, value) {
-                    // 削除対象になった行は編集不可にする
-                    const status = instance.jspreadsheet.getValueFromCoords(COL.STATUS, y);
-                    if (status === "削除対象") return false;
                 }
+                checkData();
+            }
         },
         {
             worksheetName: "正常データ",
             data: [],
             columns: [
-                { type:'text', title:'登録日', width:100 },
-                { type:'text', title:'整理No', width:80 },
-                { type:'text', title:'注番', width:80 },
-                { type:'text', title:'納期', width:100 },
-                { type:'text', title:'適用機器名', width:150 },
-                { type:'text', title:'品名CD', width:80 },
-                { type:'text', title:'図番・品番', width:100 },
-                { type:'numeric', title:'手配数', width:70 },
-                { type:'numeric', title:'発注単価', width:80 },
-                { type:'text', title:'受付日', width:100 }
+                { type:'text', title:'登録日' },
+                { type:'text', title:'整理No' },
+                { type:'text', title:'注番' },
+                { type:'text', title:'納期' },
+                { type:'text', title:'適用機器名' },
+                { type:'text', title:'品名CD' },
+                { type:'text', title:'図番・品番' },
+                { type:'numeric', title:'手配数' },
+                { type:'numeric', title:'発注単価' },
+                { type:'text', title:'受付日' }
             ]
         }
     ]
 });
 
-// 訂正用シート
+// =============================
+// 訂正シート
+// =============================
 const editSheet = jspreadsheet(document.getElementById('editSheet'), {
     worksheets: [{
+        data: [],
         columns: [
-            { type: 'text', title: '登録日', width: 100 },
-            { type: 'text', title: '整理No', readOnly: true, width: 80 },
-            { type: 'text', title: '注番', readOnly: true, width: 80 },
-            { type: 'text', title: '納期', width: 100 },
-            { type: 'text', title: '適用機器名', width: 150 },
-            { type: 'text', title: '品目CD', width: 80 },
-            { type: 'text', title: '図番・品番', width: 100 },
-            { type: 'numeric', title: '手配数', width: 80 },
-            { type: 'numeric', title: '発注単価', width: 80 },
-            { type: 'text', title: '受付日', width: 100 }
+            { type:'text', title:'登録日' },
+            { type:'text', title:'整理No', readOnly:true },
+            { type:'text', title:'注番', readOnly:true },
+            { type:'text', title:'納期' },
+            { type:'text', title:'適用機器名' },
+            { type:'text', title:'品名CD' },
+            { type:'text', title:'図番・品番' },
+            { type:'numeric', title:'手配数' },
+            { type:'numeric', title:'発注単価' },
+            { type:'text', title:'受付日' }
         ]
     }]
 });
-/* 削除処理 (D入力時のダイアログ) */
-function processDeletion(instance, rowIdx) {
-    jSuites.confirm({
-        title: '案件削除の確認',
-        message: '適用機器名に "D" が設定されました。この案件を削除対象にしますか？<br>削除フラグを設定すると解除できません。',
-        onconfirm: function() {
-            instance.setValueFromCoords(COL.STATUS, rowIdx, "削除対象");
-            instance.setValueFromCoords(COL.CHECK, rowIdx, false);
-            // 行を目立たせる（グレーアウト）
-            const range = jspreadsheet.helpers.getColumnNameFromId([0, rowIdx]) + ":" + jspreadsheet.helpers.getColumnNameFromId([COL.ERROR, rowIdx]);
-            instance.setStyle(range, 'background-color', '#f0f0f0');
-            instance.setStyle(range, 'color', '#999');
-            checkData(false);
-        },
-        oncancel: function() {
-            instance.setValueFromCoords(COL.MACHINE, rowIdx, ""); // Dを消す
-        }
-    });
+
+// =============================
+// 初期化処理
+// =============================
+async function initializeSystem() {
+    await loadItemMaster();
+    await loadOrderData();
+    spreadsheet[0].setData(orderData);
+    checkData();
 }
+
+window.onload = initializeSystem;
+
+// =============================
+// 項目訂正
+// =============================
 function openEditModal() {
     const sheet = spreadsheet[0];
     const data = sheet.getData();
     let selected = [];
-    for(let i=0; i<data.length; i++) {
-        if(sheet.getValueFromCoords(COL.CHECK, i)) selected.push(i);
+
+    for (let i = 0; i < data.length; i++) {
+        if (sheet.getValueFromCoords(COL.CHECK, i)) {
+            selected.push(i);
+        }
     }
-    if(selected.length !== 1) {
+
+    if (selected.length !== 1) {
         alert("訂正する行を1件だけ選択してください。");
         return;
     }
+
     selectedRowIndex = selected[0];
     const rowData = data[selectedRowIndex].slice(1, 11);
     editSheet[0].setData([rowData]);
@@ -243,28 +211,27 @@ function openEditModal() {
 
 function applyEdit() {
     const mainSheet = spreadsheet[0];
-    const editedData = editSheet[0].getData()[0];
-    
-    // --- 反映時の入力チェック ---
-    let editErrs = [];
-    if (!itemMaster.includes(editedData[6])) editErrs.push("【図番・品番】がマスタに存在しません。");
-    if (isNaN(parseFloat(editedData[7])) || parseFloat(editedData[7]) <= 0) editErrs.push("【手配数】を正しく入力してください。");
-    if (isNaN(parseFloat(editedData[8])) || parseFloat(editedData[8]) <= 0) editErrs.push("【発注単価】を正しく入力してください。");
+    const edited = editSheet[0].getData()[0];
 
-    if (editErrs.length > 0) {
-        alert("不備があるため反映できません：\n\n" + editErrs.join("\n"));
-        return; 
+    if (!itemMaster.includes(edited[6])) {
+        alert("図番・品番がマスタに存在しません。");
+        return;
     }
 
-    for(let i=0; i<editedData.length; i++) {
-        mainSheet.setValueFromCoords(i+1, selectedRowIndex, editedData[i]);
+    if (edited[7] <= 0 || edited[8] <= 0) {
+        alert("数量および単価を正しく入力してください。");
+        return;
     }
+
+    for (let i = 0; i < edited.length; i++) {
+        mainSheet.setValueFromCoords(i + 1, selectedRowIndex, edited[i]);
+    }
+
     mainSheet.setValueFromCoords(COL.STATUS, selectedRowIndex, "訂正済み");
     mainSheet.setValueFromCoords(COL.CHECK, selectedRowIndex, false);
-    
+
     closeEditArea();
     checkData();
-    alert("反映しました。");
 }
 
 function closeEditArea() {
@@ -272,146 +239,116 @@ function closeEditArea() {
     selectedRowIndex = null;
 }
 
+// =============================
+// エラーチェック
+// =============================
 function checkData() {
     const sheet = spreadsheet[0];
     const data = sheet.getData();
-    let msgs = [];
-    
-    for(let i=0; i<data.length; i++) {
-        const status = sheet.getValueFromCoords(COL.STATUS, i);
-        if (status === "削除対象") continue;
+    let messages = [];
 
-        let rowErrors = [];
+    for (let i = 0; i < data.length; i++) {
+        let errors = [];
         const item = data[i][COL.ITEM];
         const qty = parseFloat(data[i][COL.QTY]);
         const price = parseFloat(data[i][COL.PRICE]);
 
-        // --- 1. スタイルのリセット ---
-        const targetCols = [COL.ITEM, COL.QTY, COL.PRICE];
-        targetCols.forEach(colIdx => {
-            // getColumnNameFromId の代わりに直接 A1 形式の文字列を作成（エラー回避）
-            const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-            const cellName = letters[colIdx] + (i + 1); 
-            
-            sheet.setStyle(cellName, 'background-color', '');
-            sheet.setStyle(cellName, 'color', '');
-        });
+        if (!itemMaster.includes(item)) errors.push("図品番エラー");
+        if (isNaN(qty) || qty <= 0) errors.push("数量エラー");
+        if (isNaN(price) || price <= 0) errors.push("単価エラー");
 
-        // --- 2. 個別バリデーションと色付け ---
-        const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-
-        if(!itemMaster.includes(item)) {
-            rowErrors.push("図品番エラー");
-            const cell = letters[COL.ITEM] + (i + 1);
-            sheet.setStyle(cell, 'background-color', '#ffcccc');
-            sheet.setStyle(cell, 'color', 'red'); // 文字を赤く
-        }
-        
-        if(isNaN(qty) || qty <= 0) {
-            rowErrors.push("数量エラー");
-            const cell = letters[COL.QTY] + (i + 1);
-            sheet.setStyle(cell, 'background-color', '#ffcccc');
-            sheet.setStyle(cell, 'color', 'red'); // 文字を赤く
-        }
-        
-        if(isNaN(price) || price <= 0) {
-            rowErrors.push("単価エラー");
-            const cell = letters[COL.PRICE] + (i + 1);
-            sheet.setStyle(cell, 'background-color', '#ffcccc');
-            sheet.setStyle(cell, 'color', 'red'); // 文字を赤く
-        }
-
-        const errMsg = rowErrors.join("、");
+        const errMsg = errors.join("、");
         sheet.setValueFromCoords(COL.ERROR, i, errMsg);
-        
-        if(errMsg) {
-            msgs.push(`${i+1}行目：${errMsg}`);
+
+        if (errMsg) {
+            messages.push(`${i + 1}行目：${errMsg}`);
         }
     }
 
-    const errorListDiv = document.getElementById("errorList");
-    if (errorListDiv) {
-        errorListDiv.innerHTML = msgs.length ? msgs.join("<br>") : "エラーなし（「保存」が可能です）";
-    }
+    document.getElementById("errorList").innerHTML =
+        messages.length ? messages.join("<br>") : "エラーなし";
 }
 
-// 保存処理：チェック済みでエラーのない行を「正常データ」シートへ飛ばす
-// 保存処理：エラーのない「訂正済み」行だけを移動させる
+// =============================
+// 正常データ保存
+// =============================
 function saveToValidSheet() {
     const errSheet = spreadsheet[0];
     const validSheet = spreadsheet[1];
     const data = errSheet.getData();
-    
-    let rowsToStay = [];
-    let rowsToMove = [];
 
-    for(let i=0; i<data.length; i++) {
+    let rowsToMove = [];
+    let rowsToStay = [];
+
+    for (let i = 0; i < data.length; i++) {
         const isChecked = errSheet.getValueFromCoords(COL.CHECK, i);
         const status = errSheet.getValueFromCoords(COL.STATUS, i);
         const errMsg = errSheet.getValueFromCoords(COL.ERROR, i);
 
-        if(isChecked) {
-            // --- ガード判定 ---
-            // 1. エラー理由が残っているか？
-            if(errMsg && errMsg !== "") {
-                alert(`${i+1}行目：エラーが残っています。訂正画面で修正してください。`);
+        if (isChecked) {
+            if (errMsg !== "" || status !== "訂正済み") {
+                alert(`${i + 1}行目：訂正が完了していません。`);
                 return;
             }
-            // 2. ステータスが「訂正済み」になっているか？
-            if(status !== "訂正済み") {
-                alert(`${i+1}行目：まだ「訂正」が反映されていません。項目訂正を行ってください。`);
-                return;
-            }
-
-            // 両方クリアしていれば移動対象へ
-            rowsToMove.push(data[i].slice(1, 11)); 
+            rowsToMove.push(data[i].slice(1, 11));
         } else {
-            // チェックされていない行はそのまま残す
             rowsToStay.push(data[i]);
         }
     }
 
-    if(rowsToMove.length === 0) {
-        alert("保存対象（チェック済みで訂正が完了した行）がありません。");
+    if (rowsToMove.length === 0) {
+        alert("保存対象がありません。");
         return;
     }
 
-    if(confirm(rowsToMove.length + "件のデータを保存しますか？")) {
-        // 2枚目のシートへ追加
-        const currentValid = validSheet.getData();
-        const combined = (currentValid.length === 1 && currentValid[0][0] === "") ? rowsToMove : [...currentValid, ...rowsToMove];
-        validSheet.setData(combined);
-        
-        // 1枚目から削除（残ったデータで再表示）
-        errSheet.setData(rowsToStay);
-        
-        alert("保存完了しました。下のタブ「正常データ」から確認できます。");
-        checkData(); // 画面をリフレッシュ
-    }
+    validSheet.setData([
+        ...validSheet.getData(),
+        ...rowsToMove
+    ]);
+
+    errSheet.setData(rowsToStay);
+    alert("保存が完了しました。");
 }
+
+// =============================
+// CSV取込
+// =============================
 function importCSV() {
     const file = document.getElementById("csvFile").files[0];
-    if (!file) return;
     const reader = new FileReader();
+
     reader.onload = function (e) {
-        const rows = e.target.result.trim().split("\n").map(row => row.split(","));
-        const data = rows.slice(1).map(row => [false, row[0], row[1], row[2], row[3], row[4], row[5], row[6], Number(row[7]), Number(row[8]), row[9], "", ""]);
+        const rows = e.target.result.split("\n").map(r => r.split(","));
+        const data = rows.slice(1).map(r => [
+            false, r[0], r[1], r[2], r[3],
+            r[4], r[5], r[6],
+            Number(r[7]), Number(r[8]),
+            r[9], "", ""
+        ]);
+
         spreadsheet[0].setData(data);
-        checkData(false);
+        checkData();
     };
+
     reader.readAsText(file, "UTF-8");
 }
 
+// =============================
+// Excel出力
+// =============================
 function exportExcel() {
     const data = spreadsheet[0].getData();
-    const headers = ["訂正", "登録日", "整理No", "注番", "納期", "適用機器名", "品名CD", "図番・品番", "手配数", "発注単価", "受付日", "保守部品形名", "エラー理由"];
+    const headers = [
+        "訂正","登録日","整理No","注番","納期",
+        "適用機器名","品名CD","図番・品番",
+        "手配数","発注単価","受付日","ステータス","エラー理由"
+    ];
+
     const ws = XLSX.utils.aoa_to_sheet([headers, ...data]);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
-    XLSX.writeFile(wb, "export.xlsx");
+    XLSX.utils.book_append_sheet(wb, ws, "エラー一覧");
+    XLSX.writeFile(wb, "受注未登録エラー一覧.xlsx");
 }
-
-window.onload = () => checkData(false);
 </script>
 </body>
 </html>
